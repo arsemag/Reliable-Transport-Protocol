@@ -1,4 +1,4 @@
-#!/usr/bin/env -S python3 -u
+#!/home/ctf-machine/PycharmProjects/transport-starter-code-main/.venv/bin/python3
 
 import argparse, socket, time, json, select, struct, sys, math
 
@@ -11,6 +11,8 @@ class Sender:
         self.log("Sender starting up using port %s" % self.port)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
+        self.window_size = 2
+        self.window = []
         self.waiting = False
 
         self.remote_host = None
@@ -41,27 +43,44 @@ class Sender:
             return json.loads(data.decode("utf-8"))
 
     def run(self):
-        seq = 0
+        # seq = 0
         while True:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
 
             socks = select.select(sockets, [], [], 0.1)[0]
+            # print(f"Debug {socks}", file=sys.stderr)
             for conn in socks:
+                print(f"here agian {socks}", file=sys.stderr)
                 if conn == self.socket:
                     data = self.recv(conn)
 
                     if data:
                         self.waiting = False
                 elif conn == sys.stdin:
-                    data = sys.stdin.read(DATA_SIZE)
-                    if len(data) == 0:
-                        self.log("All done!")
-                        sys.exit(0)
+                    print(f"Reading from standard input", file=sys.stderr)
 
-                    msg = { "type": "msg", "data": data, "seq": seq }
-                    self.send(msg)
+                    seq = 0
+                    empty = False
+                    while True:
+                        data = sys.stdin.read(DATA_SIZE)
+                        if len(data) == 0:
+                            break
+                        msg = { "type": "msg", "data": data, "seq": seq }
+                        seq += 1
+                        self.window.append(msg)
+                        print(f"DEBUG: this is the window size {len(self.window)}", file=sys.stderr)
+
+                    # msg = { "type": "msg", "data": data, "seq": seq }
+                    # self.window.append(msg)
+                    # print(f"DEBUG: this is the window {self.window}")
+                    for msg in self.window:
+                        print(f"DEBUG: this is sending {self.window}", file=sys.stderr)
+                        self.send(msg)
+
+
+                    # self.send(msg)
                     self.waiting = True
-                    seq += 1
+                    sys.exit(0)
 
         return
 
