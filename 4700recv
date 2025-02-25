@@ -37,10 +37,10 @@ class Receiver:
         sys.stderr.flush()
 
     def run(self):
-        print(f"DEBUG: after received:", file=sys.stderr)
+        # print(f"DEBUG: after received:", file=sys.stderr)
         while True:
-            print(f"DEBUG: after received", file=sys.stderr)
-            socks = select.select([self.socket], [], [], 0.1)[0] #TODO timeout variable
+            print(f"anything", file=sys.stderr)
+            socks = select.select([self.socket], [], [], .1)[0] #TODO timeout variable
             print(f"DEBUG: SOCKS {socks}", file=sys.stderr)
             for conn in socks:
                 msg = self.recv(conn)
