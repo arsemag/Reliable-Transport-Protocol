@@ -1,4 +1,4 @@
-#!/home/ctf-machine/PycharmProjects/transport-starter-code-main/.venv/bin/python3
+#!/usr/bin/env -S python3 -u
 
 import argparse, socket, time, json, select, struct, sys, math
 
@@ -37,14 +37,10 @@ class Receiver:
         sys.stderr.flush()
 
     def run(self):
-        print(f"DEBUG: after received:", file=sys.stderr)
         while True:
-            print(f"DEBUG: after received", file=sys.stderr)
-            socks = select.select([self.socket], [], [], 0.1)[0] #TODO timeout variable
-            print(f"DEBUG: SOCKS {socks}", file=sys.stderr)
+            socks = select.select([self.socket], [], [])[0]
             for conn in socks:
                 msg = self.recv(conn)
-                print(f"DEBUG: after received: {msg}", file=sys.stderr)
 
                 if msg:
                     # Print out the data to stdout
