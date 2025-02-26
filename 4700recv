@@ -1,4 +1,4 @@
-#!/usr/bin/env -S python3 -u
+#!/home/ctf-machine/PycharmProjects/transport-starter-code-main/.venv/bin/python3
 
 import argparse, socket, time, json, select, struct, sys, math
 

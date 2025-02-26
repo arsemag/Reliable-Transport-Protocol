@@ -1,4 +1,4 @@
-#!/usr/bin/env -S python3 -u
+#!/home/ctf-machine/PycharmProjects/transport-starter-code-main/.venv/bin/python3
 
 import argparse, socket, time, json, select, struct, sys, math
 
@@ -12,6 +12,7 @@ class Sender:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
+        self.window_size = 2 #TODO maybe change this later
 
         self.remote_host = None
         self.remote_port = None
@@ -53,15 +54,16 @@ class Sender:
                     if data:
                         self.waiting = False
                 elif conn == sys.stdin:
-                    data = sys.stdin.read(DATA_SIZE)
-                    if len(data) == 0:
-                        self.log("All done!")
-                        sys.exit(0)
+                    for _ in range(self.window_size):
+                        data = sys.stdin.read(DATA_SIZE)
+                        if len(data) == 0:
+                            self.log("All done!")
+                            sys.exit(0)
 
-                    msg = { "type": "msg", "data": data, "seq": seq }
-                    self.send(msg)
-                    self.waiting = True
-                    seq += 1
+                        msg = { "type": "msg", "data": data, "seq": seq }
+                        seq += 1
+                        self.send(msg)
+                        self.waiting = True
 
         return
 
