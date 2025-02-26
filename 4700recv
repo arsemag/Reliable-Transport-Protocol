@@ -18,7 +18,6 @@ class Receiver:
 
     def recv(self, socket):
         data, addr = socket.recvfrom(65535)
-
         # Grab the remote host/port if we don't already have it
         if self.remote_host is None:
             self.remote_host = addr[0]
@@ -40,7 +39,7 @@ class Receiver:
         # print(f"DEBUG: after received:", file=sys.stderr)
         while True:
             print(f"anything", file=sys.stderr)
-            socks = select.select([self.socket], [], [], .1)[0] #TODO timeout variable
+            socks = select.select([self.socket], [], [], 2.0)[0] #TODO timeout variable
             print(f"DEBUG: SOCKS {socks}", file=sys.stderr)
             for conn in socks:
                 msg = self.recv(conn)
