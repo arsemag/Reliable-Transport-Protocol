@@ -41,31 +41,47 @@ class Sender:
             self.log("Received message %s" % data)
             return json.loads(data.decode("utf-8"))
 
-    def run(self):
-        seq = 0
-        while True:
-            sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
+    def clear_socket_buffer(sock):
+        try:
+            while True:
+                data = sock.recv(1024)
+                if not data:
+                    break
+        except socket.error:
+            pass
 
+    def run(self):
+        is_data_left = True
+        seq = 0
+        acked_packets = set()
+
+        while is_data_left or self.waiting:
+            sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
             socks = select.select(sockets, [], [], 0.1)[0]
+
             for conn in socks:
+                print(f"DEBUG: self.socket: {self.socket}", sys.stderr), conn
                 if conn == self.socket:
                     data = self.recv(conn)
-
-                    if data:
-                        self.waiting = False
-                elif conn == sys.stdin:
+                    print(f"DEBUG: data: {data}", sys.stderr), conn
+                    if data and data.get("type") == "ack":
+                        acked_packets.add(data["seq"])
+                        print(f"DEBUG: len of ack set: {acked_packets}", sys.stderr)
+                        if len(acked_packets) == seq:
+                            self.waiting = False
+                elif conn == sys.stdin and is_data_left:
                     for _ in range(self.window_size):
                         data = sys.stdin.read(DATA_SIZE)
                         if len(data) == 0:
-                            self.log("All done!")
-                            sys.exit(0)
+                            is_data_left = False
+                            break
 
-                        msg = { "type": "msg", "data": data, "seq": seq }
+                        msg = {"type": "msg", "data": data, "seq": seq}
                         seq += 1
                         self.send(msg)
-                        self.waiting = True
+                    self.waiting = True
 
-        return
+        sys.exit(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='send data')
