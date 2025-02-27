@@ -1,5 +1,4 @@
-#!/home/ctf-machine/PycharmProjects/transport-starter-code-main/.venv/bin/python3
-
+#!/Users/arsemag/CS4700_Net_Projects/transport-starter-code-main/.venv/bin/python3
 import argparse, socket, time, json, select, struct, sys, math
 
 DATA_SIZE = 1375
@@ -27,6 +26,7 @@ class Sender:
 
     def recv(self, socket):
         data, addr = socket.recvfrom(65535)
+        print("Received THIS: %s" % data)
 
         # Grab the remote host/port if we don't already have it
         if self.remote_host is None:
@@ -41,34 +41,26 @@ class Sender:
             self.log("Received message %s" % data)
             return json.loads(data.decode("utf-8"))
 
-    def clear_socket_buffer(sock):
-        try:
-            while True:
-                data = sock.recv(1024)
-                if not data:
-                    break
-        except socket.error:
-            pass
 
     def run(self):
         is_data_left = True
         seq = 0
-        acked_packets = set()
+        acked = []
 
-        while is_data_left or self.waiting:
+        while is_data_left:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
             socks = select.select(sockets, [], [], 0.1)[0]
 
             for conn in socks:
-                print(f"DEBUG: self.socket: {self.socket}", sys.stderr), conn
                 if conn == self.socket:
                     data = self.recv(conn)
-                    print(f"DEBUG: data: {data}", sys.stderr), conn
-                    if data and data.get("type") == "ack":
-                        acked_packets.add(data["seq"])
-                        print(f"DEBUG: len of ack set: {acked_packets}", sys.stderr)
-                        if len(acked_packets) == seq:
-                            self.waiting = False
+                    print(f"\n Received HERE {data} \n ")
+                    acked.append(data["seq"])
+
+                    if len(acked) == seq:
+                        self.waiting = False
+
+
                 elif conn == sys.stdin and is_data_left:
                     for _ in range(self.window_size):
                         data = sys.stdin.read(DATA_SIZE)
@@ -79,6 +71,7 @@ class Sender:
                         msg = {"type": "msg", "data": data, "seq": seq}
                         seq += 1
                         self.send(msg)
+
                     self.waiting = True
 
         sys.exit(0)
