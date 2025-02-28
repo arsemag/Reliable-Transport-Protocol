@@ -12,6 +12,7 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
         self.window_size = 2 #TODO maybe change this later
+        self.messages = []
 
         self.remote_host = None
         self.remote_port = None
@@ -46,6 +47,21 @@ class Sender:
         is_data_left = True
         seq = 0
         acked = []
+        fake_data = True
+        info_2 = sys.stdin.read()
+        print(f"this is the info 2 is {info_2}", file=sys.stderr)
+
+
+        while fake_data:
+            info = sys.stdin.read(DATA_SIZE)
+            if len(info) == 0:
+                fake_data = False
+            else:
+                msg = {"type": "msg", "data": info, "seq": seq}
+                seq += 1
+                self.messages.append(msg)
+
+        print(f"this is the message: {self.messages}", file=sys.stderr)
 
         while is_data_left:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
@@ -54,25 +70,26 @@ class Sender:
             for conn in socks:
                 if conn == self.socket:
                     data = self.recv(conn)
-                    print(f"\n Received HERE {data} \n ")
                     acked.append(data["seq"])
-
                     if len(acked) == seq:
                         self.waiting = False
+                if not fake_data:
+                    for msg_num in range(len(self.messages)):
+                        if not self.waiting:
+                            for i in range(self.window_size):
+                                self.send(self.messages[msg_num + i])
 
-
-                elif conn == sys.stdin and is_data_left:
-                    for _ in range(self.window_size):
-                        data = sys.stdin.read(DATA_SIZE)
-                        if len(data) == 0:
-                            is_data_left = False
+                            self.waiting = True
+                            msg_num += self.window_size
+                        else:
                             break
 
-                        msg = {"type": "msg", "data": data, "seq": seq}
-                        seq += 1
-                        self.send(msg)
 
-                    self.waiting = True
+
+
+
+
+
 
         sys.exit(0)
 

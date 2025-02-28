@@ -45,11 +45,10 @@ class Receiver:
 
 
 
-                # if msg["seq"] not in self.already_seen:
-                #     self.already_seen.append(msg["seq"])
-                    # print(f"DEBUG: already seen {self.already_seen}", sys.stderr)
 
-                if msg:
+                if msg["seq"] not in self.already_seen:
+                    self.already_seen.append(msg["seq"])
+                    # print(f"DEBUG: already seen {self.already_seen}", sys.stderr)
                     # Print out the data to stdout
                     print(msg["data"], end='', flush=True)
                     # print(f"   \n HERE {msg["seq"]}  \n  ", end='', flush=True)
