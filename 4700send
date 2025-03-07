@@ -1,4 +1,4 @@
-#!/Users/arsemag/CS4700_Net_Projects/transport-starter-code-main/.venv/bin/python3
+#!/home/ctf-machine/PycharmProjects/transport-starter-code-main/.venv/bin/python3
 import argparse, socket, time, json, select, struct, sys, math
 
 DATA_SIZE = 1375
@@ -11,8 +11,8 @@ class Sender:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
-        self.window_size = 2 #TODO maybe change this later
-        self.messages = []
+        self.window_size =  2
+        self.acknowledged_packet = set()
 
         self.remote_host = None
         self.remote_port = None
@@ -27,7 +27,6 @@ class Sender:
 
     def recv(self, socket):
         data, addr = socket.recvfrom(65535)
-        print("Received THIS: %s" % data)
 
         # Grab the remote host/port if we don't already have it
         if self.remote_host is None:
@@ -42,56 +41,36 @@ class Sender:
             self.log("Received message %s" % data)
             return json.loads(data.decode("utf-8"))
 
-
     def run(self):
-        is_data_left = True
         seq = 0
-        acked = []
-        fake_data = True
-        info_2 = sys.stdin.read()
-        print(f"this is the info 2 is {info_2}", file=sys.stderr)
-
-
-        while fake_data:
-            info = sys.stdin.read(DATA_SIZE)
-            if len(info) == 0:
-                fake_data = False
-            else:
-                msg = {"type": "msg", "data": info, "seq": seq}
-                seq += 1
-                self.messages.append(msg)
-
-        print(f"this is the message: {self.messages}", file=sys.stderr)
-
-        while is_data_left:
+        while True:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
-            socks = select.select(sockets, [], [], 0.1)[0]
 
+            socks = select.select(sockets, [], [], 0.1)[0]
             for conn in socks:
                 if conn == self.socket:
                     data = self.recv(conn)
-                    acked.append(data["seq"])
-                    if len(acked) == seq:
+                    if data['seq'] not in self.acknowledged_packet:
+                        self.acknowledged_packet.add(data['seq'])
                         self.waiting = False
-                if not fake_data:
-                    for msg_num in range(len(self.messages)):
-                        if not self.waiting:
-                            for i in range(self.window_size):
-                                self.send(self.messages[msg_num + i])
+                    # else:
+                    #     self.waiting = True
 
-                            self.waiting = True
-                            msg_num += self.window_size
-                        else:
-                            break
+                    # if data:
+                    #     self.waiting = False
+                elif conn == sys.stdin:
+                    for _ in range(self.window_size):
+                        data = sys.stdin.read(DATA_SIZE)
+                        if len(data) == 0:
+                            self.log("All done!")
+                            sys.exit(0)
 
+                        msg = { "type": "msg", "data": data, "seq": seq }
+                        self.send(msg)
+                        self.waiting = True
+                        seq += 1
 
-
-
-
-
-
-
-        sys.exit(0)
+        return
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='send data')
