@@ -3,6 +3,7 @@ import argparse, socket, time, json, select, struct, sys, math
 
 DATA_SIZE = 1375
 
+
 class Sender:
     def __init__(self, host, port):
         self.host = host
@@ -11,7 +12,7 @@ class Sender:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
-        self.window_size =  4
+        self.window_size = 1
         self.acknowledged_packet = set()
 
         self.remote_host = None
@@ -52,12 +53,8 @@ class Sender:
                     data = self.recv(conn)
                     if data['seq'] not in self.acknowledged_packet:
                         self.acknowledged_packet.add(data['seq'])
+                        self.window_size += 1
                         self.waiting = False
-                    # else:
-                    #     self.waiting = True
-
-                    # if data:
-                    #     self.waiting = False
                 elif conn == sys.stdin:
                     for _ in range(self.window_size):
                         data = sys.stdin.read(DATA_SIZE)
@@ -65,12 +62,13 @@ class Sender:
                             self.log("All done!")
                             sys.exit(0)
 
-                        msg = { "type": "msg", "data": data, "seq": seq }
+                        msg = {"type": "msg", "data": data, "seq": seq}
                         self.send(msg)
                         self.waiting = True
                         seq += 1
 
         return
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='send data')

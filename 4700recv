@@ -8,7 +8,7 @@ class Receiver:
         self.socket.bind(('0.0.0.0', 0))
         self.port = self.socket.getsockname()[1]
         self.log("Bound to port %d" % self.port)
-        self.window_size = 4
+        self.window_size = 1
         self.received_sequences = set()
         self.back_burner = {}
         self.seq_number_counter = 0
@@ -42,13 +42,14 @@ class Receiver:
 
     def run(self):
         while True:
-            # socks = select.select([self.socket], [], [])[0]
+            # socks = select.select([self.socket], [], [], .1)[0]
             # for conn in socks:
             size = self.window_size
             for _ in range(size):
                 msg = self.recv(self.socket)
 
-                print(f"DEBUG BEFORE: received sequences: {self.received_sequences}, msg sequence: {msg['seq']}", file=sys.stderr)
+
+                # print(f"DEBUG BEFORE: received sequences: {self.received_sequences}, msg sequence: {msg['seq']}", file=sys.stderr)
                 if msg["seq"] not in self.received_sequences:
                     self.received_sequences.add(msg["seq"])
                     # print(
@@ -66,12 +67,11 @@ class Receiver:
                     # else
                     #   add to back burner
 
-
-
                     def jitter():
                         if self.seq_number_counter == msg["seq"]:
                             print(msg["data"], end='', flush=True)
                             self.seq_number_counter += 1
+                            jitter()
                         elif self.seq_number_counter in self.back_burner.keys():
                             print(self.back_burner[self.seq_number_counter], end='', flush=True)
                             self.seq_number_counter += 1
@@ -81,12 +81,14 @@ class Receiver:
 
                     jitter()
 
-                    if msg["seq"] % 2 == 1:
-                        # Always send back an ack
-                        self.send({ "type": "ack", "seq": msg["seq"] })
-
                 else:
                     size += 1
+
+                # print(f"DEBUG: received sequence = {self.received_sequences}", file=)
+                max_sequence_received =  max(self.received_sequences)
+                if max_sequence_received % self.window_size == self.window_size - 1 and len(self.received_sequences) % self.window_size == 0:
+                    self.send({"type": "ack", "seq": max(self.received_sequences)})
+                    self.window_size += 1
 
         return
 
