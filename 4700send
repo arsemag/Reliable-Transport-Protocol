@@ -14,6 +14,8 @@ class Sender:
         self.waiting = False
         self.window_size = 1
         self.acknowledged_packet = set()
+        self.sent_out_packets = set()
+        self.change_window_counter = 0
 
         self.remote_host = None
         self.remote_port = None
@@ -48,25 +50,49 @@ class Sender:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
 
             socks = select.select(sockets, [], [], 0.1)[0]
+            size = self.window_size
+            # print("DEBUG window_size: %s" % size, file=sys.stderr)
             for conn in socks:
                 if conn == self.socket:
-                    data = self.recv(conn)
-                    if data['seq'] not in self.acknowledged_packet:
-                        self.acknowledged_packet.add(data['seq'])
-                        self.window_size += 1
-                        self.waiting = False
+                    i = 0
+                    while i < size:
+                        # print(f"DEBUG: this is the size {size}", file=sys.stderr)
+                        if len(self.sent_out_packets) == 0:
+                            self.log("All done!")
+                            sys.exit(0)
+                        data = self.recv(conn)
+                        if data['seq'] not in self.acknowledged_packet:
+                            self.acknowledged_packet.add(data['seq'])
+                            # print(f"DEBUG: this is acknowledged packets {self.acknowledged_packet}", file=sys.stderr)
+                            self.sent_out_packets = self.sent_out_packets - self.acknowledged_packet
+                            self.waiting = False
+                            if self.change_window_counter == self.window_size - 1:
+                                self.window_size += 1
+                                self.change_window_counter = 0
+                                # print(f"DEBUG window_size: {self.window_size} and change_window_counter: {self.change_window_counter}", file=sys.stderr)
+                            else:
+                                self.change_window_counter += 1
+                        else:
+                            size += 1
+                            # print("DEBUG: WINDOW_SIZE: %s" % size, file=sys.stderr)
+                        i += 1
+
                 elif conn == sys.stdin:
                     for _ in range(self.window_size):
                         data = sys.stdin.read(DATA_SIZE)
-                        if len(data) == 0:
+                        if len(data) != 0:
+                            msg = {"type": "msg", "data": data, "seq": seq}
+                            self.sent_out_packets.add(seq)
+                            self.send(msg)
+
+                        # msg = {"type": "msg", "data": data, "seq": seq}
+                        # self.sent_out_packets.add(seq)
+                        if len(self.sent_out_packets) == 0:
                             self.log("All done!")
                             sys.exit(0)
 
-                        msg = {"type": "msg", "data": data, "seq": seq}
-                        self.send(msg)
                         self.waiting = True
                         seq += 1
-
         return
 
 
