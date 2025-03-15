@@ -12,10 +12,12 @@ class Sender:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
-        self.window_size = 1
+        self.window_size = 2
         self.acknowledged_packet = set()
         self.sent_out_packets = set()
         self.change_window_counter = 0
+        self.packets_sent_so_far = {}
+
 
         self.remote_host = None
         self.remote_port = None
@@ -44,56 +46,93 @@ class Sender:
             self.log("Received message %s" % data)
             return json.loads(data.decode("utf-8"))
 
+    def handle_socket_input(self, conn):
+        """
+        Processes incoming packets on the UDP socket.
+        Tracks acknowledgments and adjusts the window size.
+        """
+        i = 0
+        size = self.window_size
+        while i < size:
+            print(f"DEBUG: len of sent out packets = {len(self.sent_out_packets)}", file=sys.stderr)
+            if len(self.sent_out_packets) == 0:
+                self.log("All done!")
+                sys.exit(0)
+
+            data = self.recv(conn)
+            # Check if we have a new acknowledgment
+            if data["type"] == "ack" or data["type"] == "fin":
+                if data['seq'] not in self.acknowledged_packet:
+                    self.acknowledged_packet.add(data['seq'])
+                    self.sent_out_packets -= self.acknowledged_packet
+                    print(f"DEBUG: sent out packets = {self.sent_out_packets}, acknowledged packets = {self.acknowledged_packet}", file=sys.stderr)
+
+                    self.waiting = False
+                    # Increase window if needed
+                    if self.change_window_counter == self.window_size - 1:
+                        self.window_size += 1
+                        self.change_window_counter = 0
+                    else:
+                        self.change_window_counter += 1
+                else:
+                    # Duplicate ack, temporarily expand window size
+                    size += 1
+                i += 1
+
+
+            else:
+                # current_seq = data['seq']
+                seq = data['seq']
+                print(f"DEBUG: nack seq number = {seq}, type={type(seq)}", file=sys.stderr)
+                print(f"current information {self.packets_sent_so_far[seq]['data']}", file=sys.stderr)
+                msg = {"type": "msg", "data": self.packets_sent_so_far[seq]['data'], "seq": seq}
+
+                self.send(msg)
+
+
+    def handle_stdin_input(self, seq):
+        """
+        Reads chunks of data from standard input
+        and sends them as packets.
+        """
+        for _ in range(self.window_size):
+            data = sys.stdin.read(DATA_SIZE)
+            if len(data) != 0:
+                msg = {"type": "msg", "data": data, "seq": seq}
+                self.sent_out_packets.add(seq)
+                self.packets_sent_so_far[seq] = msg
+
+                self.send(msg)
+            else:
+                msg = {"type": "fin", "data": data, "seq": seq}
+                print(f'DEBUG: I am sending', file=sys.stderr)
+                self.send(msg)
+                break
+
+            # print(f"DEBUG: sent_out_packets = {self.sent_out_packets}", file=sys.stderr)
+            # if len(self.sent_out_packets) == 0:
+            #     self.log("All done!")
+            #     sys.exit(0)
+            self.waiting = True
+            seq += 1
+        return seq
+
     def run(self):
+        """
+        Main loop that merges socket input and standard input
+        according to the window settings and waiting state.
+        """
         seq = 0
         while True:
+            # If not waiting, listen on both socket and STDIN
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
+            ready_socks = select.select(sockets, [], [], 0.1)[0]
 
-            socks = select.select(sockets, [], [], 0.1)[0]
-            size = self.window_size
-            # print("DEBUG window_size: %s" % size, file=sys.stderr)
-            for conn in socks:
+            for conn in ready_socks:
                 if conn == self.socket:
-                    i = 0
-                    while i < size:
-                        # print(f"DEBUG: this is the size {size}", file=sys.stderr)
-                        if len(self.sent_out_packets) == 0:
-                            self.log("All done!")
-                            sys.exit(0)
-                        data = self.recv(conn)
-                        if data['seq'] not in self.acknowledged_packet:
-                            self.acknowledged_packet.add(data['seq'])
-                            # print(f"DEBUG: this is acknowledged packets {self.acknowledged_packet}", file=sys.stderr)
-                            self.sent_out_packets = self.sent_out_packets - self.acknowledged_packet
-                            self.waiting = False
-                            if self.change_window_counter == self.window_size - 1:
-                                self.window_size += 1
-                                self.change_window_counter = 0
-                                # print(f"DEBUG window_size: {self.window_size} and change_window_counter: {self.change_window_counter}", file=sys.stderr)
-                            else:
-                                self.change_window_counter += 1
-                        else:
-                            size += 1
-                            # print("DEBUG: WINDOW_SIZE: %s" % size, file=sys.stderr)
-                        i += 1
-
+                    self.handle_socket_input(conn)
                 elif conn == sys.stdin:
-                    for _ in range(self.window_size):
-                        data = sys.stdin.read(DATA_SIZE)
-                        if len(data) != 0:
-                            msg = {"type": "msg", "data": data, "seq": seq}
-                            self.sent_out_packets.add(seq)
-                            self.send(msg)
-
-                        # msg = {"type": "msg", "data": data, "seq": seq}
-                        # self.sent_out_packets.add(seq)
-                        if len(self.sent_out_packets) == 0:
-                            self.log("All done!")
-                            sys.exit(0)
-
-                        self.waiting = True
-                        seq += 1
-        return
+                    seq = self.handle_stdin_input(seq)
 
 
 if __name__ == "__main__":
