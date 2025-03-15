@@ -18,6 +18,12 @@ class Sender:
         self.change_window_counter = 0
         self.packets_sent_so_far = {}
 
+        self.received_ack_of_current_window = set()
+        self.stop_what_ack_we_want_at_this_number = -1
+        self.what_we_want = set()
+        self.where_are_we = 0
+        self.socket.settimeout(2.0)
+
 
         self.remote_host = None
         self.remote_port = None
@@ -54,40 +60,38 @@ class Sender:
         i = 0
         size = self.window_size
         while i < size:
-            print(f"DEBUG: len of sent out packets = {len(self.sent_out_packets)}", file=sys.stderr)
-            if len(self.sent_out_packets) == 0:
-                self.log("All done!")
-                sys.exit(0)
+            try:
 
-            data = self.recv(conn)
-            # Check if we have a new acknowledgment
-            if data["type"] == "ack" or data["type"] == "fin":
-                if data['seq'] not in self.acknowledged_packet:
-                    self.acknowledged_packet.add(data['seq'])
-                    self.sent_out_packets -= self.acknowledged_packet
-                    print(f"DEBUG: sent out packets = {self.sent_out_packets}, acknowledged packets = {self.acknowledged_packet}", file=sys.stderr)
+                if len(self.sent_out_packets) == 0:
+                    self.log("All done!")
+                    sys.exit(0)
 
-                    self.waiting = False
-                    # Increase window if needed
-                    if self.change_window_counter == self.window_size - 1:
-                        self.window_size += 1
-                        self.change_window_counter = 0
+                data = self.recv(conn)
+                # Check if we have a new acknowledgment
+                if data["type"] == "ack" or data["type"] == "fin":
+                    if data['seq'] not in self.acknowledged_packet:
+                        self.acknowledged_packet.add(data['seq'])
+                        self.sent_out_packets -= self.acknowledged_packet
+
+                        self.waiting = False
+                        # Increase window if needed
+                        if self.change_window_counter == self.window_size - 1:
+                            self.window_size += 1
+                            self.change_window_counter = 0
+                        else:
+                            self.change_window_counter += 1
                     else:
-                        self.change_window_counter += 1
-                else:
-                    # Duplicate ack, temporarily expand window size
-                    size += 1
-                i += 1
+                        # Duplicate ack, temporarily expand window size
+                        size += 1
+            except socket.timeout:
+                self.log("Timeout occurred, sending send back data")
+                # print(f"debug: waw={self.where_are_we}, waw+win_size={self.where_are_we + self.window_size}", file=sys.stderr)
+                self.missing_ack()
 
+                break
 
-            else:
-                # current_seq = data['seq']
-                seq = data['seq']
-                print(f"DEBUG: nack seq number = {seq}, type={type(seq)}", file=sys.stderr)
-                print(f"current information {self.packets_sent_so_far[seq]['data']}", file=sys.stderr)
-                msg = {"type": "msg", "data": self.packets_sent_so_far[seq]['data'], "seq": seq}
+            i += 1
 
-                self.send(msg)
 
 
     def handle_stdin_input(self, seq):
@@ -105,7 +109,7 @@ class Sender:
                 self.send(msg)
             else:
                 msg = {"type": "fin", "data": data, "seq": seq}
-                print(f'DEBUG: I am sending', file=sys.stderr)
+
                 self.send(msg)
                 break
 
@@ -116,6 +120,38 @@ class Sender:
             self.waiting = True
             seq += 1
         return seq
+
+    def missing_ack(self):
+
+        if self.stop_what_ack_we_want_at_this_number == -1:
+            for i in range(self.where_are_we, self.where_are_we + self.window_size):
+                self.what_we_want.add(i)
+        else:
+            for i in range(self.where_are_we, self.stop_what_ack_we_want_at_this_number):
+                self.what_we_want.add(i)
+
+        if self.what_we_want != self.received_ack_of_current_window:
+            print(f"DEBUG this is the received ack of: {self.received_ack_of_current_window} and the what we want: {self.what_we_want}", file=sys.stderr)
+            print(f"DEBUG this is where we are {self.where_are_we} and our window size is {self.window_size}", file=sys.stderr)
+            missing_ack = self.what_we_want - self.received_ack_of_current_window
+            for ack in missing_ack:
+                msg = {"type": "msg", "data": self.packets_sent_so_far[ack]['data'], "seq": ack}
+                self.send(msg)
+        else:
+            self.window_size += 1
+
+
+
+    def handle_received_window(self):
+        self.what_we_want.clear()
+        self.received_ack_of_current_window.clear()
+
+    def advance_window(self):
+
+        self.where_are_we += self.window_size - 1
+        print(f"where we are: {self.where_are_we}", file=sys.stderr)
+
+
 
     def run(self):
         """
@@ -133,6 +169,10 @@ class Sender:
                     self.handle_socket_input(conn)
                 elif conn == sys.stdin:
                     seq = self.handle_stdin_input(seq)
+
+            self.handle_received_window()
+            self.advance_window()
+
 
 
 if __name__ == "__main__":

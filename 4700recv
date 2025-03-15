@@ -152,10 +152,7 @@ class Receiver:
             for i in range(self.where_are_we, self.stop_what_we_want_at_this_number):
                 self.what_we_want.add(i)
 
-        print(f"DEBUG: what_we_want = {self.what_we_want}", file=sys.stderr)
 
-
-        print(f"DEBUG: what we want = {self.what_we_want}", file=sys.stderr)
         if self.what_we_want != self.received_packet_of_current_window:
             missing = self.what_we_want - self.received_packet_of_current_window
             for seq in missing:
