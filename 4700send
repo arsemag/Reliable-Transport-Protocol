@@ -17,7 +17,12 @@ class Sender:
         self.sent_out_packets = set()
         self.change_window_counter = 0
         self.packets_sent_so_far = {}
+        self.socket.settimeout(.1)
 
+        self.received_acks_of_current_window = set()
+        self.what_we_want = set()
+        self.where_are_we = 0
+        self.stop_what_we_want_at_this_number = -1
 
         self.remote_host = None
         self.remote_port = None
@@ -54,41 +59,47 @@ class Sender:
         i = 0
         size = self.window_size
         while i < size:
-            print(f"DEBUG: len of sent out packets = {len(self.sent_out_packets)}", file=sys.stderr)
+            # print(f"DEBUG: len of sent out packets = {len(self.sent_out_packets)}", file=sys.stderr)
             if len(self.sent_out_packets) == 0:
                 self.log("All done!")
                 sys.exit(0)
+            try:
+                data = self.recv(conn)
+                # Check if we have a new acknowledgment
+                if data["type"] == "ack" or data["type"] == "fin":
+                    if data["type"] == "fin":
+                        self.stop_what_we_want_at_this_number = data['seq']
+                    self.received_acks_of_current_window.add(data["seq"])
+                    # self.check_missing_packets()
+                    if data['seq'] not in self.acknowledged_packet:
+                        self.acknowledged_packet.add(data['seq'])
+                        self.sent_out_packets -= self.acknowledged_packet
+                        # print(f"DEBUG: sent out packets = {self.sent_out_packets}, acknowledged packets = {self.acknowledged_packet}", file=sys.stderr)
 
-            data = self.recv(conn)
-            # Check if we have a new acknowledgment
-            if data["type"] == "ack" or data["type"] == "fin":
-                if data['seq'] not in self.acknowledged_packet:
-                    self.acknowledged_packet.add(data['seq'])
-                    self.sent_out_packets -= self.acknowledged_packet
-                    print(f"DEBUG: sent out packets = {self.sent_out_packets}, acknowledged packets = {self.acknowledged_packet}", file=sys.stderr)
-
-                    self.waiting = False
-                    # Increase window if needed
-                    if self.change_window_counter == self.window_size - 1:
-                        self.window_size += 1
-                        self.change_window_counter = 0
+                        self.waiting = False
+                        # Increase window if needed
+                        if self.change_window_counter == self.window_size - 1:
+                            self.window_size += 1
+                            self.change_window_counter = 0
+                        else:
+                            self.change_window_counter += 1
                     else:
-                        self.change_window_counter += 1
+                        # Duplicate ack, temporarily expand window size
+                        size += 1
+                    i += 1
+
+
                 else:
-                    # Duplicate ack, temporarily expand window size
-                    size += 1
-                i += 1
+                    # current_seq = data['seq']
+                    seq = data['seq']
+                    # print(f"DEBUG: nack seq number = {seq}, type={type(seq)}", file=sys.stderr)
+                    # print(f"current information {self.packets_sent_so_far[seq]['data']}", file=sys.stderr)
+                    msg = {"type": "msg", "data": self.packets_sent_so_far[seq]['data'], "seq": seq}
 
-
-            else:
-                # current_seq = data['seq']
-                seq = data['seq']
-                print(f"DEBUG: nack seq number = {seq}, type={type(seq)}", file=sys.stderr)
-                print(f"current information {self.packets_sent_so_far[seq]['data']}", file=sys.stderr)
-                msg = {"type": "msg", "data": self.packets_sent_so_far[seq]['data'], "seq": seq}
-
-                self.send(msg)
-
+                    self.send(msg)
+            except socket.timeout:
+                self.check_missing_packets()
+                break
 
     def handle_stdin_input(self, seq):
         """
@@ -105,7 +116,7 @@ class Sender:
                 self.send(msg)
             else:
                 msg = {"type": "fin", "data": data, "seq": seq}
-                print(f'DEBUG: I am sending', file=sys.stderr)
+                # print(f'DEBUG: I am sending', file=sys.stderr)
                 self.send(msg)
                 break
 
@@ -131,8 +142,51 @@ class Sender:
             for conn in ready_socks:
                 if conn == self.socket:
                     self.handle_socket_input(conn)
+                    self.advance_window()
+                    self.handle_received_window()
                 elif conn == sys.stdin:
                     seq = self.handle_stdin_input(seq)
+
+
+    def check_missing_packets(self):
+        """
+        Check for missing packets in the current window and send NACKs for them.
+        If all packets are received, increase the window size.
+        """
+        # print(
+            # f"DEBUG: BEFORE CREATION OF WWW\nwww={self.what_we_want}\nwaw={self.where_are_we}\nwin_size={self.window_size}\nswwwatn={self.stop_what_we_want_at_this_number}",
+            # file=sys.stderr)
+        # print(f"DEBUG: CREATING WWW...", file=sys.stderr)
+        if self.stop_what_we_want_at_this_number == -1:
+            for i in range(self.where_are_we, self.where_are_we + self.window_size):
+                self.what_we_want.add(i)
+        else:
+            for i in range(self.where_are_we, self.stop_what_we_want_at_this_number):
+                self.what_we_want.add(i)
+
+        # print(
+            # f"DEBUG: AFTER CREATION OF WWW\nwww={self.what_we_want}\nwaw={self.where_are_we}\nwin_size={self.window_size}\nswwwatn={self.stop_what_we_want_at_this_number}",
+            # file=sys.stderr)
+
+        # print(
+        #     f"DEBUG: AFTER ADVANCING WINDOW AND CLEARING\nwww={self.what_we_want}\nwaw={self.where_are_we}\nwin_size={self.window_size}\nswwwatn={self.stop_what_we_want_at_this_number}",
+        #     file=sys.stderr)
+
+        # print(f"DEBUG: what we want = {self.what_we_want}", file=sys.stderr)
+        if self.what_we_want != self.received_acks_of_current_window:
+            missing = self.what_we_want - self.received_acks_of_current_window
+            for ack in missing:
+                msg = {"type": "shit", "data": self.packets_sent_so_far[ack]['data'], "seq": ack}
+                self.send(msg)
+        else:
+            self.window_size += 1
+
+    def handle_received_window(self):
+        self.what_we_want.clear()
+        self.received_acks_of_current_window.clear()
+
+    def advance_window(self):
+        self.where_are_we += self.window_size - 1
 
 
 if __name__ == "__main__":

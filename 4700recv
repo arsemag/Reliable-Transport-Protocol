@@ -2,6 +2,7 @@
 
 import argparse, socket, time, json, select, struct, sys, math, copy
 
+
 class Receiver:
     def __init__(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -10,15 +11,15 @@ class Receiver:
         self.log("Bound to port %d" % self.port)
         self.window_size = 2
         self.received_sequences = set()
-        self.socket.settimeout(2.0)
+        self.socket.settimeout(4.0)
 
-        #Try to get test 1 - 3 to all pass
+        # Try to get test 1 - 3 to all pass
         self.received_packet_of_current_window = set()
         self.what_we_want = set()
-        self.where_are_we =  0
+        self.where_are_we = 0
         self.back_burner = {}
         self.seq_number_counter = 0
-        self.increase_window_size_counter = 0
+        self.increase_window_size_counter = 0  # TODO we don't use this
         self.stop_what_we_want_at_this_number = -1
 
         self.remote_host = None
@@ -57,7 +58,8 @@ class Receiver:
         """
         while True:
             self.collect_incoming_data()
-            # self.check_missing_packets()
+            print(f"DEBUG: ENTERING CHECK MISSING PACKETS...", file=sys.stderr)
+            self.check_missing_packets()
             self.handle_received_window()
             self.advance_window()
 
@@ -75,11 +77,9 @@ class Receiver:
         size = self.window_size
         while i < size:
             try:
+                print(f"DEBUG: ENTERING TRY EXCEPT...", file=sys.stderr)
                 msg = self.recv(self.socket)
-                # print(f"DEBUG: msg = {msg}", file=sys.stderr)
                 if msg['type'] == 'msg' and msg["seq"] not in self.received_sequences:
-                    # print(f"DEBUG: are we in here yet", file=sys.stderr)
-                    self.received_sequences.add(msg["seq"])
                     self.received_packet_of_current_window.add(msg["seq"])
                     self.handle_new_packet(msg)
 
@@ -87,23 +87,20 @@ class Receiver:
                     self.stop_what_we_want_at_this_number = msg["seq"]
                     self.send({"type": "fin", "seq": msg["seq"]})
 
+                elif msg['type'] == 'shit':
+                    # print(f"DEBUG: BEFORE UPDATING WAW\n{self.where_are_we}", file=sys.stderr)
+                    self.where_are_we -= 1
+                    self.send({"type": "ack", "seq": msg["seq"]})
+                    # print(f"DEBUG: AFTER UPDATING WAW\n{self.where_are_we}", file=sys.stderr)
+                    # self.check_missing_packets()
                 else:
                     size += 1
             except socket.timeout:
-                self.log("Timeout occurred, sending NACK")
+                # self.log("Timeout occurred, sending NACK")
                 # print(f"debug: waw={self.where_are_we}, waw+win_size={self.where_are_we + self.window_size}", file=sys.stderr)
                 self.check_missing_packets()
-                # Send NACK for the next expected sequence or missing window
-                # for seq in range(self.where_are_we, self.where_are_we + self.window_size):
-                #     if seq not in self.received_sequences:
-                #         self.send({"type": "nack", "seq": seq})
                 break
-            # if msg and msg["seq"] not in self.received_sequences:
-            #     self.handle_new_packet(msg)
-            # else:
-            #     size += 1
             i += 1
-        self.window_size += 1
 
     def handle_new_packet(self, msg):
         """
@@ -115,7 +112,7 @@ class Receiver:
         """
         self.received_sequences.add(msg["seq"])
         # self.received_packet_of_current_window.add(msg["seq"])
-        self.send({"type": "ack", "seq": msg["seq"]})
+        self.send({"type": "ack", "seq": msg["seq"]}) # TODO probably never send the ack again if we get type shit
 
         def jitter():
             """
@@ -144,7 +141,10 @@ class Receiver:
         Check for missing packets in the current window and send NACKs for them.
         If all packets are received, increase the window size.
         """
-        print(f"stop what we want a this number = {self.stop_what_we_want_at_this_number}", file=sys.stderr)
+        print(
+            f"DEBUG: BEFORE CREATION OF WWW\nwww={self.what_we_want}\nwaw={self.where_are_we}\nwin_size={self.window_size}\nrpocw={self.received_packet_of_current_window}\nswwwatn={self.stop_what_we_want_at_this_number}\n",
+            file=sys.stderr)
+        print(f"DEBUG: CREATING WWW...\n", file=sys.stderr)
         if self.stop_what_we_want_at_this_number == -1:
             for i in range(self.where_are_we, self.where_are_we + self.window_size):
                 self.what_we_want.add(i)
@@ -152,16 +152,20 @@ class Receiver:
             for i in range(self.where_are_we, self.stop_what_we_want_at_this_number):
                 self.what_we_want.add(i)
 
-        print(f"DEBUG: what_we_want = {self.what_we_want}", file=sys.stderr)
+        print(
+            f"DEBUG: AFTER CREATION OF WWW\nwww={self.what_we_want}\nwaw={self.where_are_we}\nwin_size={self.window_size}\nrpocw={self.received_packet_of_current_window}\nswwwatn={self.stop_what_we_want_at_this_number}\n",
+            file=sys.stderr)
 
-
-        print(f"DEBUG: what we want = {self.what_we_want}", file=sys.stderr)
         if self.what_we_want != self.received_packet_of_current_window:
             missing = self.what_we_want - self.received_packet_of_current_window
             for seq in missing:
                 self.send({"type": "nack", "seq": seq})
         else:
             self.window_size += 1
+
+        print(
+            f"DEBUG: AFTER THE CHECKING WHAT'S MISSING\nwww={self.what_we_want}\nwaw={self.where_are_we}\nwin_size={self.window_size}\nrpocw={self.received_packet_of_current_window}\nswwwatn={self.stop_what_we_want_at_this_number}\n",
+            file=sys.stderr)
 
     def handle_received_window(self):
         self.what_we_want.clear()
