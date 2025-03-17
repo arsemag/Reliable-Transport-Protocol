@@ -4,8 +4,10 @@ import socket
 import json
 import select
 import sys
+import time  # Needed for RTT estimation
 
 DATA_SIZE = 1375
+
 
 class Sender:
     def __init__(self, host, port):
@@ -14,10 +16,15 @@ class Sender:
         self.log("Sender starting up using port %s" % self.port)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
-        self.socket.settimeout(1)
+
+        # RTT estimation initialization
+        self.rtt_estimate = 0.5  # initial RTT estimate in seconds
+        self.rtt_alpha = 0.125  # smoothing factor for RTT estimation
+        self.timeout = 2 * self.rtt_estimate  # timeout is twice the RTT
+        self.socket.settimeout(self.timeout)
+        self.send_times = {}  # Maps packet sequence numbers to the send time
 
         self.window_size = 4
-        self.expected_window = set()
         self.expected_window = set()
         self.current_window_base = 0  # Base sequence number for the current window
         self.sent_out_packets = set()  # Packets sent but not yet acked
@@ -43,6 +50,10 @@ class Sender:
 
     def send(self, message):
         self.log("Sending message '%s'" % json.dumps(message))
+        if message.get("type") == "msg":
+            seq = message.get("seq")
+            # Record the send time for RTT estimation.
+            self.send_times[seq] = time.time()
         self.socket.sendto(json.dumps(message).encode("utf-8"), (self.host, self.port))
 
     def recv(self, sock):
@@ -66,14 +77,21 @@ class Sender:
         else:
             expected_count = self.window_size
 
-        print(f"DEBUG: BEFORE WHILE LOOP\nack_count={ack_count}\nexpected_count={expected_count}", file=sys.stderr)
+        self.log(f"DEBUG: BEFORE WHILE LOOP\nack_count={ack_count}\nexpected_count={expected_count}")
         while ack_count < expected_count:
             try:
                 data = self.recv(self.socket)
                 if data is None:
                     continue
-                if data["type"] in ("ack", "fin"):
+                if data["type"] == 'ack':
                     seq = data["seq"]
+                    # If we have a recorded send time for this packet, update our RTT estimate.
+                    if seq in self.send_times:
+                        sample_rtt = time.time() - self.send_times[seq]
+                        # Update the estimated RTT using an exponential weighted moving average.
+                        self.rtt_estimate = (1 - self.rtt_alpha) * self.rtt_estimate + self.rtt_alpha * sample_rtt
+                        self.timeout = 2 * self.rtt_estimate
+                        self.socket.settimeout(self.timeout)
                     if seq not in self.acknowledged_packet:
                         self.acknowledged_packet.add(seq)
                         self.sent_out_packets.discard(seq)
@@ -123,13 +141,13 @@ class Sender:
         """
         if self.finished:
             expected_window = set(range(self.current_window_base, self.final_seq))
-        # else:
-        #     expected_window = set(range(self.current_window_base, self.current_window_base + self.window_size))
-
-        print(f"DEBUG: BEFORE FINDING MISSING\nexpected_window: {self.expected_window}\nreceived acks of current window: {self.received_acks_of_current_window}", file=sys.stderr)
+        print(
+            f"DEBUG: BEFORE FINDING MISSING\nexpected_window: {self.expected_window}\nreceived acks of current window: {self.received_acks_of_current_window}",
+            file=sys.stderr)
         missing_in_window = self.expected_window - self.received_acks_of_current_window
-        print(f"DEBUG: AFTER FINDING MISSING\nmissing in window {missing_in_window}\nexpected_window: {self.expected_window}\nreceived acks of current window: {self.received_acks_of_current_window}", file=sys.stderr)
-
+        print(
+            f"DEBUG: AFTER FINDING MISSING\nmissing in window {missing_in_window}\nexpected_window: {self.expected_window}\nreceived acks of current window: {self.received_acks_of_current_window}",
+            file=sys.stderr)
 
         if missing_in_window:
             self.log(f"Missing packets in current window: {missing_in_window}")
@@ -153,10 +171,10 @@ class Sender:
         while True:
             # If waiting for ACKs, only check the socket.
             sources = [self.socket] if self.waiting else [self.socket, sys.stdin]
-            ready, _, _ = select.select(sources, [], [], 2)
+            ready, _, _ = select.select(sources, [], [], self.timeout)
 
             if self.waiting and not ready:
-                print("DEBUG: ENTERING NOT WAITING AND NOT READY", file=sys.stderr)
+                self.log("DEBUG: ENTERING NOT WAITING AND NOT READY")
                 self.handle_socket_input()
                 self.waiting = False
 
@@ -172,6 +190,7 @@ class Sender:
             if self.finished and not self.sent_out_packets:
                 self.log("All done!")
                 sys.exit(0)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Send data over UDP with reliability.')
