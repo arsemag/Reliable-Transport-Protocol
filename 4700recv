@@ -51,10 +51,6 @@ class Receiver:
             if msg["seq"] not in self.received_sequences:
                 self.received_sequences.add(msg["seq"])
                 self.handle_new_packet(msg)
-        elif msg["type"] == "fin":
-            # When a FIN message is received, send FIN ack and exit.
-            self.send({"type": "fin", "seq": msg["seq"]})
-            sys.exit(0)
 
     def handle_new_packet(self, msg):
         """
