@@ -168,7 +168,7 @@ class Sender:
             else:
                 self.current_window_base += self.window_size
             # Increase window size by 1 when all ACKs are received
-            self.window_size *= 2
+            self.window_size += 2
 
         # Clear ACKs for the next window cycle.
         self.received_acks_of_current_window.clear()
