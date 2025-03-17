@@ -11,9 +11,9 @@ class Receiver:
         self.socket.bind(('0.0.0.0', 0))
         self.port = self.socket.getsockname()[1]
         self.log("Bound to port %d" % self.port)
-        self.received_sequences = set()  # All sequences that have been processed
-        self.back_burner = {}            # Out-of-order packets
-        self.seq_number_counter = 0      # Expected sequence number to print next
+        self.received_sequences = set()
+        self.back_burner = {}
+        self.seq_number_counter = 0
 
         self.remote_host = None
         self.remote_port = None
@@ -29,7 +29,6 @@ class Receiver:
 
     def recv(self):
         data, addr = self.socket.recvfrom(65535)
-        # Set remote host/port on first message
         if self.remote_host is None:
             self.remote_host = addr[0]
             self.remote_port = addr[1]
@@ -43,11 +42,9 @@ class Receiver:
             return json.loads(decoded)
 
     def process_message(self, msg):
-        # Always send an ACK for any received message.
         self.send({"type": "ack", "seq": msg["seq"]})
 
         if msg["type"] == "msg":
-            # Only process new packets.
             if msg["seq"] not in self.received_sequences:
                 self.received_sequences.add(msg["seq"])
                 self.handle_new_packet(msg)
@@ -66,12 +63,10 @@ class Receiver:
                 print(self.back_burner.pop(self.seq_number_counter), end='', flush=True)
                 self.seq_number_counter += 1
         else:
-            # If it's out-of-order, store it for later.
             self.back_burner[msg["seq"]] = msg["data"]
 
     def run(self):
         while True:
-            # Use select to wait for incoming data (with a short timeout)
             ready, _, _ = select.select([self.socket], [], [], 0.1)
             if ready:
                 msg = self.recv()
