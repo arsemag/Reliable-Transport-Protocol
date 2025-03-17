@@ -14,7 +14,7 @@ class Sender:
         self.log("Sender starting up using port %s" % self.port)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
-        self.socket.settimeout(.75)
+        self.socket.settimeout(1)
 
         self.window_size = 4
         self.expected_window = set()
@@ -136,14 +136,14 @@ class Sender:
             self.missing.update(missing_in_window)
             self.current_window_base = min(missing_in_window)
             # Decrease window size (with a minimum of 1)
-            self.window_size = max(1, self.window_size - 1)
+            self.window_size = max(1, self.window_size // 2)
         else:
             if self.finished:
                 self.current_window_base = self.final_seq
             else:
                 self.current_window_base += self.window_size
             # Increase window size by 1 when all ACKs are received
-            self.window_size += 1
+            self.window_size *= 2
 
         # Clear ACKs for the next window cycle.
         self.received_acks_of_current_window.clear()
@@ -153,7 +153,12 @@ class Sender:
         while True:
             # If waiting for ACKs, only check the socket.
             sources = [self.socket] if self.waiting else [self.socket, sys.stdin]
-            ready, _, _ = select.select(sources, [], [], 0.1)
+            ready, _, _ = select.select(sources, [], [], 2)
+
+            if self.waiting and not ready:
+                print("DEBUG: ENTERING NOT WAITING AND NOT READY", file=sys.stderr)
+                self.handle_socket_input()
+                self.waiting = False
 
             for source in ready:
                 if source == self.socket:
