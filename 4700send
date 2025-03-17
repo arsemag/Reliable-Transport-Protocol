@@ -93,9 +93,16 @@ class Sender:
                         self.timeout = 2 * self.rtt_estimate
                         self.socket.settimeout(self.timeout)
                     if seq not in self.acknowledged_packet:
+                        print(f'DEBUG: SEQ # {seq} IS NOT IN ACKED PACKETS ADDING NOW...', file=sys.stderr)
                         self.acknowledged_packet.add(seq)
+                        print(f'DEBUG: ACKED PACKETS AFTER ADDING\n{self.acknowledged_packet}', file=sys.stderr)
                         self.sent_out_packets.discard(seq)
                         self.received_acks_of_current_window.add(seq)
+                    else:
+                        print(f'DEBUG: SEQ HAS ALREADY BEEN ACKED\nINCREASING EXPECTED COUNT...\nINCREASING ACK COUNT...\nMOVING ON...', file=sys.stderr)
+                        expected_count += 1
+                        ack_count += 1
+                        continue
                     # Count duplicate ACKs as well.
                     ack_count += 1
             except socket.timeout:
