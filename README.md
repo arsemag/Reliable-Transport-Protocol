@@ -59,8 +59,9 @@ handles data transmission and ordering.
 
 
 TESTING
-Throughout the development process, I used print statements and broke down the code into smaller 
-sections to pinpoint where things were going wrong. I would test different scenarios, remove certain conditions, 
+
+Throughout the development process, we used print statements and broke down the code into smaller 
+sections to pinpoint where things were going wrong. We would test different scenarios, remove certain conditions, 
 and change the code to make sure everything worked as expected. This helped me catch and fix issues step by step, 
 making sure the final solution accurate. 
 
