@@ -1,4 +1,4 @@
-#!/Users/arsemag/CS4700_Net_Projects/transport-starter-code-main/.venv/bin/python3
+#!/usr/bin/env -S python3 -u
 
 import argparse, socket, time, json, select, struct, sys, math, copy
 
@@ -8,19 +8,19 @@ class Receiver:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
         self.port = self.socket.getsockname()[1]
-        self.log("Bound to port %d" % self.port)
+        # self.log("Bound to port %d" % self.port)
         self.received_sequences = set()
         self.back_burner = {}
         self.seq_number_counter = 0
         self.remote_host = None
         self.remote_port = None
-
-    def log(self, message):
-        sys.stderr.write(message + "\n")
-        sys.stderr.flush()
+    #
+    # def log(self, message):
+    #     sys.stderr.write(message + "\n")
+    #     sys.stderr.flush()
 
     def send(self, message):
-        self.log("Sent message %s" % json.dumps(message))
+        # self.log("Sent message %s" % json.dumps(message))
         if self.remote_host is not None and self.remote_port is not None:
             self.socket.sendto(json.dumps(message).encode("utf-8"), (self.remote_host, self.remote_port))
 
@@ -35,7 +35,7 @@ class Receiver:
             return None
         else:
             decoded = data.decode("utf-8")
-            self.log("Received message %s" % decoded)
+            # self.log("Received message %s" % decoded)
             return json.loads(decoded)
 
     def process_message(self, msg):
