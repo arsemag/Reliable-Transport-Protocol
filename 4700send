@@ -13,7 +13,7 @@ class Sender:
     def __init__(self, host, port):
         self.host = host
         self.port = int(port)
-        # self.log("Sender starting up using port %s" % self.port)
+        self.log("Sender starting up using port %s" % self.port)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
 
@@ -44,12 +44,12 @@ class Sender:
         # When finished, final_seq is the sequence number for the next packet that would have been sent.
         self.final_seq = None
 
-    # def log(self, message):
-    #     sys.stderr.write(message + "\n")
-    #     sys.stderr.flush()
+    def log(self, message):
+        sys.stderr.write(message + "\n")
+        sys.stderr.flush()
 
     def send(self, message):
-        # self.log("Sending message '%s'" % json.dumps(message))
+        self.log("Sending message '%s'" % json.dumps(message))
         if message.get("type") == "msg":
             seq = message.get("seq")
             # Record the send time for RTT estimation.
@@ -65,7 +65,7 @@ class Sender:
             # self.log("Error: Received response from unexpected remote; ignoring")
             return None
         else:
-            # self.log("Received message %s" % data)
+            self.log("Received message %s" % data)
             return json.loads(data.decode("utf-8"))
 
     def handle_socket_input(self):
